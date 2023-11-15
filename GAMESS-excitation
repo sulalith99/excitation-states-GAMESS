@@ -1,0 +1,133 @@
+#!/bin/bash
+
+#### Things to change #####
+
+excitation_out=excitaion-energies
+
+states_cwd=/homes/sulalith/Research/Project-05/1-[Ag-Nanowire]/5-[GAMESS]/2-[transition]/
+#completely_or_summary=summary#this is a user input parameter,but if desired, you can comment out the user input section.
+
+###########################
+
+# Request input file name
+echo "What is the name of the output file? (include .log)"
+read file_name
+
+# Request the output type as complete or summary
+echo "Do you need the complete set of data [c] or the summary[s]?"
+read state_c_s
+
+# Request the output type as complete or summary
+echo "Do you need the state occupancy data [y] or [n]?"
+read occupancy_y_n
+
+if [[ $state_c_s =~ "c" ]]
+then
+  completely_or_summary=completely
+elif [[ $state_c_s =~ "s" ]]
+then
+  completely_or_summary=summary
+fi
+
+if [[ $occupancy_y_n =~ "y" ]]
+then
+  yes_or_no=yes
+elif [[ $occupancy_y_n =~ "n" ]]
+then
+  yes_or_no=no
+fi
+
+cwd=$PWD
+
+start_line="$(grep -n "LENGTH FORM" $cwd/$file_name | cut -f1 -d:)"
+end_line="$(grep -n "VELOCITY FORM" $cwd/$file_name | cut -f1 -d:)"
+line_gap=$((end_line-start_line))
+grep -A $line_gap "LENGTH FORM" $cwd/$file_name > $cwd/length-form
+
+file_name=$cwd/length-form
+
+grep "CI STATE NUMBER=" $file_name > state-numbers
+awk '{print $4-1 "->" $5-1}' state-numbers > state-to-state
+rm state-numbers
+
+grep "STATE ENERGIES" $file_name > state-energies
+awk '{print $3 "->" $4}' state-energies > state-to-state-energies
+
+awk '{print (($3*27.2114079527)) "->" (($4*27.2114079527))}' state-energies > state-to-state-energies-eV
+rm state-energies
+
+grep "TRANSITION ENERGY" $file_name > t-energies
+awk -F" " '{ print $9 }' t-energies > t-energies_eV
+awk -F" " '{ print $3 }' t-energies > t-energies_SEC
+awk -F" " '{ print $6 }' t-energies > t-energies_CM
+rm t-energies
+
+grep "CENTER OF MASS" $file_name > com
+awk -F" " '{ print $5 }' com > com_x
+awk -F" " '{ print $6 }' com > com_y
+awk -F" " '{ print $7 }' com > com_z
+rm com
+
+grep "E*BOHR" $file_name > db
+grep "TRANSITION DIPOLE" db > dipole-bhor
+rm db
+awk -F" " '{ print $4 }' dipole-bhor > dipole-bhor_x
+awk -F" " '{ print $5 }' dipole-bhor > dipole-bhor_y
+awk -F" " '{ print $6 }' dipole-bhor > dipole-bhor_z
+awk -F" " '{ print $7 }' dipole-bhor > dipole-bhor_norm
+rm dipole-bhor
+
+grep "DEBYE" $file_name > dipole-debye
+awk -F" " '{ print $4 }' dipole-debye > dipole-debye_x
+awk -F" " '{ print $5 }' dipole-debye > dipole-debye_y
+awk -F" " '{ print $6 }' dipole-debye > dipole-debye_z
+awk -F" " '{ print $7 }' dipole-debye > dipole-debye_norm
+rm dipole-debye
+
+awk '/DEBYE/{getline; print}' $file_name > oscillator-strength
+sed -i -e 's/CPU/OSCILLATOR STRENGTH =    xxx/g' oscillator-strength
+awk -F" " '{ print $4 }' oscillator-strength > new-os
+rm oscillator-strength
+
+echo 'State -> State,State Energy -> State Energy (Hartree),State Energy -> State Energy (eV),Transition Energy (eV),Transition Energy (1/sec),Transition Energy (1/cm),Oscillator Strength,Transition Dipole [x] (Debye),Transition Dipole [y] (Debye),Transition Dipole [z] (Debye),Transition Dipole [norm] (Debye)' >> title
+
+
+paste -d, <(cut -d, -f1 state-to-state) <(cut -d, -f1 state-to-state-energies) <(cut -d, -f1 state-to-state-energies-eV) <(cut -d, -f1 t-energies_eV) <(cut -d, -f1 t-energies_SEC) <(cut -d, -f1 t-energies_CM) <(cut -d, -f1 new-os) <(cut -d, -f1 dipole-debye_x) <(cut -d, -f1 dipole-debye_y) <(cut -d, -f1 dipole-debye_z) <(cut -d, -f1 dipole-debye_norm)> results
+
+if [[ $completely_or_summary =~ "completely" ]]
+then
+echo 'State -> State,State Energy -> State Energy (Hartree),State Energy -> State Energy (eV),Transition Energy (eV),Transition Energy (1/sec),Transition Energy (1/cm),Oscillator Strength,Transition Dipole [x] (Debye),Transition Dipole [y] (Debye),Transition Dipole [z] (Debye),Transition Dipole [norm] (Debye), Transition Dipole [x] (E*Bhor),Transition Dipole [y] (E*Bhor),Transition Dipole [z] (E*Bhor),Transition Dipole [norm] (E*Bhor),COM [x] (Bhor),COM [y] (Bhor),COM [z] (Bhor)' >> title_all
+paste -d, <(cut -d, -f1 state-to-state) <(cut -d, -f1 state-to-state-energies) <(cut -d, -f1 state-to-state-energies-eV) <(cut -d, -f1 t-energies_eV) <(cut -d, -f1 t-energies_SEC) <(cut -d, -f1 t-energies_CM) <(cut -d, -f1 new-os) <(cut -d, -f1 dipole-debye_x) <(cut -d, -f1 dipole-debye_y) <(cut -d, -f1 dipole-debye_z) <(cut -d, -f1 dipole-debye_norm) <(cut -d, -f1 dipole-bhor_x) <(cut -d, -f1 dipole-bhor_y) <(cut -d, -f1 dipole-bhor_z) <(cut -d, -f1 dipole-bhor_norm) <(cut -d, -f1 com_x) <(cut -d, -f1 com_y) <(cut -d, -f1 com_z)> all-results
+cat title_all all-results > $excitation_out-complete.csv
+rm title_all
+rm all-results
+fi
+
+cat title results > $excitation_out.csv
+
+if [[ $yes_or_no =~ "yes" ]]
+then
+ $states_cwd./GAMESS-states
+fi
+
+rm state-to-state
+rm state-to-state-energies
+rm state-to-state-energies-eV
+rm t-energies_eV
+rm t-energies_SEC
+rm t-energies_CM
+rm new-os
+rm dipole-debye_x
+rm dipole-debye_y
+rm dipole-debye_z
+rm dipole-debye_norm
+rm dipole-bhor_x
+rm dipole-bhor_y
+rm dipole-bhor_z
+rm dipole-bhor_norm
+rm com_x
+rm com_y
+rm com_z
+rm title
+rm results
+rm $cwd/length-form

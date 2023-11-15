@@ -1,0 +1,75 @@
+#!/bin/bash
+
+# Request input file name
+echo "What is the name of the output file? (include .log)"
+read file_name
+
+cwd=$PWD
+file_name=$cwd/$file_name
+
+start_line="$(grep -n " STATE #" $file_name | head -1 | cut -f1 -d:)"
+start_line_txt="$(grep " STATE #" $file_name | head -1)"
+end_line="$(grep -n "THE PROJECTION" $file_name | tail -1 | cut -f1 -d:)"
+line_gap=$((end_line-start_line))
+grep -A $line_gap "$start_line_txt" $file_name > $cwd/states
+
+grep " STATE #" $cwd/states > state_energies
+grep "THE PROJECTION"  $cwd/states > state_symmetry
+
+loops="$(grep -n " STATE #" $cwd/state_energies | tail -1 | cut -f1 -d:)"
+
+awk '{print $10 "    " $12}' $cwd/state_symmetry > $cwd/symmetry
+rm $cwd/state_symmetry
+
+awk '{print $3 "   " $6}' $cwd/state_energies > $cwd/energies
+awk ' $1 ~ /[0-9]+/ && $2 ~ /[-+0-9.]+/ {$0 = sprintf("%9d%20.9f", $1, $2*27.2114079527) "    " $2} 1 ' $cwd/energies > $cwd/new_energies
+rm $cwd/state_energies
+rm $cwd/energies
+
+paste <(awk '{print $1}' $cwd/new_energies) <(awk '{print $3}' $cwd/new_energies) <(awk '{print $2}' $cwd/new_energies) <(awk '{print $1}' $cwd/symmetry) <(awk '{print $2}' $cwd/symmetry) > energies_symmetries
+rm $cwd/new_energies
+rm $cwd/symmetry
+
+echo 'State,State Energy (Hartree),State Energy (eV),Symmetry,Symmetry weight,CSF,Coefficient,Coefficient percentage(%),Occupancy' >> energies-and-occupancy.csv
+
+for (( counter=1; counter<=$loops; counter++));
+do
+  state_line="$(grep -n " STATE #" $cwd/states | head -1 | cut -f1 -d:)"
+  symmetry_line="$(grep -n " THE PROJECTION" $cwd/states | head -1 | cut -f1 -d:)"
+  state_line_start="$(grep " STATE #" $cwd/states | head -1)"
+  state_gap=$((symmetry_line-state_line))
+  grep -A $state_gap "$state_line_start" $cwd/states > $cwd/state$counter
+
+  for (( cut=1; cut<=4; cut++ ));
+  do
+    sed -i '1d' $cwd/state$counter
+  done
+  cut_end="$(grep -n " THE PROJECTION" $cwd/state$counter | tail -1 | cut -f1 -d:)"
+  sed -i '$d' $cwd/state$counter
+
+  awk ' $1 ~ /[0-9]+/ && $2 ~ /[-+0-9.]+/ {$0 = sprintf("%6d%12.6f", $1, $2*$2*100) "  " $2 "  " $3 } 1 ' $cwd/state$counter > $cwd/nstate$counter
+  rm $cwd/state$counter
+  sort -k 2nr $cwd/nstate$counter > $cwd/sorted_state$counter
+  rm $cwd/nstate$counter
+
+  for (( s_counter=$state_line; s_counter<=$((symmetry_line+2)); s_counter++));
+  do
+    sed -i '1d' $cwd/states
+  done
+
+  nloop="$(grep -n " " $cwd/sorted_state$counter | tail -1 | cut -f1 -d:)"
+  top="$(grep -m1 "" $cwd/energies_symmetries)"
+  for (( j=1; j<=$nloop; j++ ));
+  do
+    echo $top >> energies_symmetries$counter
+  done
+  sed -i '1d' $cwd/energies_symmetries
+
+  paste -d, <(awk '{print $1-1}' $cwd/energies_symmetries$counter) <(awk '{print $2}' $cwd/energies_symmetries$counter) <(awk '{print $3}' $cwd/energies_symmetries$counter) <(awk '{print $4}' $cwd/energies_symmetries$counter) <(awk '{print $5}' $cwd/energies_symmetries$counter) <(awk '{print $1}' $cwd/sorted_state$counter) <(awk '{print $3}' $cwd/sorted_state$counter) <(awk '{print $2}' $cwd/sorted_state$counter) <(awk '{print $4}' $cwd/sorted_state$counter) >> energies-and-occupancy.csv
+
+done
+rm $cwd/states
+rm $cwd/energies_symmetries
+
+find . -maxdepth 1 -name 'energies_symmetries*' -delete
+find . -maxdepth 1 -name 'sorted_state*' -delete
